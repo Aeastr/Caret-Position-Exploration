@@ -6,15 +6,31 @@
 //
 
 import SwiftUI
+import AppKit
 
 @main
 struct cursorPositionApp: App {
     let persistenceController = PersistenceController.shared
-
+    @StateObject private var permissionsService = PermissionsService()
+    @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
+    
     var body: some Scene {
+        
         WindowGroup {
-            ContentView()
-                .environment(\.managedObjectContext, persistenceController.container.viewContext)
+            Group{
+                if self.permissionsService.isTrusted {
+                    ContentView()
+                } else {
+                    Text("perm issues")
+                }
+            }
+            .onAppear{
+                self.permissionsService.pollAccessibilityPrivileges {
+                    print("Accessibility permissions granted!")
+                }
+            }
+            .environment(\.managedObjectContext, persistenceController.container.viewContext)
         }
     }
 }
+

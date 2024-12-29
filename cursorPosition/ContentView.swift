@@ -1,83 +1,170 @@
-//
-//  ContentView.swift
-//  cursorPosition
-//
-//  Created by Aether on 29/12/2024.
-//
-
 import SwiftUI
-import CoreData
+import AppKit
 
 struct ContentView: View {
     @Environment(\.managedObjectContext) private var viewContext
-
-    @FetchRequest(
-        sortDescriptors: [NSSortDescriptor(keyPath: \Item.timestamp, ascending: true)],
-        animation: .default)
-    private var items: FetchedResults<Item>
-
+    @State private var inputText: String = ""
+    @State private var logs: [String] = [] // Logs for debugging
+    @State private var timer: Timer? // Timer for periodic updates
+    @StateObject private var permissionsService = PermissionsService() // Permission check service
+    
     var body: some View {
-        NavigationView {
-            List {
-                ForEach(items) { item in
-                    NavigationLink {
-                        Text("Item at \(item.timestamp!, formatter: itemFormatter)")
-                    } label: {
-                        Text(item.timestamp!, formatter: itemFormatter)
-                    }
-                }
-                .onDelete(perform: deleteItems)
+        VStack {
+            headerSection
+            
+            if permissionsService.isTrusted {
+                mainContent
+            } else {
+                permissionsIssueView
             }
-            .toolbar {
-                ToolbarItem {
-                    Button(action: addItem) {
-                        Label("Add Item", systemImage: "plus")
-                    }
-                }
+        }
+        .padding()
+    }
+
+    // MARK: - Subviews
+
+    private var headerSection: some View {
+        VStack(spacing: 10) {
+            Text("Cursor Position Checker")
+                .font(.headline)
+                .padding(.bottom, 5)
+            
+            Button("Check Permissions Again") {
+                permissionsService.pollAccessibilityPrivileges()
             }
-            Text("Select an item")
+            .padding()
         }
     }
 
-    private func addItem() {
-        withAnimation {
-            let newItem = Item(context: viewContext)
-            newItem.timestamp = Date()
-
-            do {
-                try viewContext.save()
-            } catch {
-                // Replace this implementation with code to handle the error appropriately.
-                // fatalError() causes the application to generate a crash log and terminate. You should not use this function in a shipping application, although it may be useful during development.
-                let nsError = error as NSError
-                fatalError("Unresolved error \(nsError), \(nsError.userInfo)")
-            }
+    private var mainContent: some View {
+        VStack(spacing: 20) {
+            inputSection
+            caretActionsSection
+            logsSection
+        }
+        .onAppear {
+            permissionsService.pollAccessibilityPrivileges()
+        }
+        .onDisappear {
+            stopCheckingFocus() // Stop timer when the view disappears
         }
     }
 
-    private func deleteItems(offsets: IndexSet) {
-        withAnimation {
-            offsets.map { items[$0] }.forEach(viewContext.delete)
-
-            do {
-                try viewContext.save()
-            } catch {
-                // Replace this implementation with code to handle the error appropriately.
-                // fatalError() causes the application to generate a crash log and terminate. You should not use this function in a shipping application, although it may be useful during development.
-                let nsError = error as NSError
-                fatalError("Unresolved error \(nsError), \(nsError.userInfo)")
+    private var inputSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            TextField("Enter text", text: $inputText)
+                .textFieldStyle(RoundedBorderTextFieldStyle())
+                .padding(.horizontal)
+            
+            HStack {
+                Button("Start Checking") {
+                    startCheckingFocus()
+                }
+                .buttonStyle(PrimaryButtonStyle())
+                
+                Button("Stop Checking") {
+                    stopCheckingFocus()
+                }
+                .buttonStyle(PrimaryButtonStyle())
             }
+            .padding(.horizontal)
+        }
+    }
+
+    private var caretActionsSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Button {
+                checkCaretRect()
+            } label: {
+                Text("Get Caret Rect")
+            }
+            .buttonStyle(PrimaryButtonStyle())
+            .padding(.horizontal)
+        }
+    }
+
+    private var logsSection: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Text("Logs:")
+                .font(.subheadline)
+                .fontWeight(.bold)
+                .padding(.horizontal)
+            
+            ScrollView {
+                VStack(alignment: .leading) {
+                    ForEach(logs, id: \.self) { log in
+                        Text(log)
+                            .font(.caption)
+                            .padding(2)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .border(Color.gray, width: 0.2)
+                    }
+                }
+            }
+            .frame(maxHeight: 300) // Limit scrollable area height
+            .padding()
+            .border(Color.blue, width: 1)
+        }
+    }
+
+    private var permissionsIssueView: some View {
+        VStack(spacing: 10) {
+            Text("Accessibility permissions are required to run this app.")
+                .multilineTextAlignment(.center)
+                .padding()
+            Button("Check Permissions Again") {
+                permissionsService.pollAccessibilityPrivileges()
+            }
+            .padding()
+        }
+    }
+
+    // MARK: - Helper Functions
+
+    private func checkCaretRect() {
+        if let focusedElement = frontmostFocusedElement() {
+            if let caretRect = focusedElement.getInsertionPointRect() {
+                appendLog("Caret rect: \(caretRect)")
+            } else {
+                appendLog("No caret rect found or unsupported app.")
+            }
+        } else {
+            appendLog("No focused element or unsupported app.")
+        }
+    }
+
+    private func startCheckingFocus() {
+        stopCheckingFocus() // Ensure any previous timer is invalidated
+        appendLog("Started checking focus.")
+        timer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: true) { _ in
+            checkCaretRect()
+        }
+    }
+
+    private func stopCheckingFocus() {
+        timer?.invalidate()
+        timer = nil
+        appendLog("Stopped checking focus.")
+    }
+
+    private func appendLog(_ message: String) {
+        logs.append("[\(Date().formatted(date: .omitted, time: .standard))] \(message)")
+        print("[\(Date().formatted(date: .omitted, time: .standard))] \(message)")
+        if logs.count > 50 {
+            logs.removeFirst(logs.count - 50) // Keep only the latest 50 logs
         }
     }
 }
 
-private let itemFormatter: DateFormatter = {
-    let formatter = DateFormatter()
-    formatter.dateStyle = .short
-    formatter.timeStyle = .medium
-    return formatter
-}()
+// MARK: - Button Style
 
-#Preview {
-    ContentView().environment(\.managedObjectContext, PersistenceController.preview.container.viewContext)
+struct PrimaryButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .padding()
+            .frame(maxWidth: .infinity)
+            .background(configuration.isPressed ? Color.gray : Color.blue)
+            .foregroundColor(.white)
+            .cornerRadius(5)
+    }
 }
