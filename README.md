@@ -1,6 +1,9 @@
 
 # **Caret Position Exploration - Testing Grounds**
 
+> ⚠️ **NOTE:** If you're looking for a polished and reusable Swift package for retrieving cursor position and bounds, you are probably looking for **[CursorBounds](https://github.com/Aeastr/CursorBounds)**.  
+> This repository is a test app and not intended as a production-ready library.
+
 This repository is a **testing application** developed to explore and experiment with macOS Accessibility APIs for retrieving the text cursor's position and bounding rectangle in various macOS applications. 
 
 This is **NOT a packaged library or framework** but rather a test app used to understand how the underlying Accessibility API functions. If you're looking for a polished Swift package, please refer to the appropriate package repositories.
